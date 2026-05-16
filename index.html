@@ -14,6 +14,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 <script src="https://rekanusaha.github.io/fupasnackMobile1/onesignal.js?v=1"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 
     <style>
         :root {
@@ -269,6 +270,29 @@
             border: none;
             background: none;
             gap: 2px;
+            position: relative;
+        }
+        .nav-badge {
+            position: absolute;
+            top: 4px;
+            right: 18px;
+            min-width: 18px;
+            height: 18px;
+            padding: 0 5px;
+            border-radius: 999px;
+            background: var(--danger-color);
+            color: #fff;
+            font-size: 10px;
+            font-weight: 700;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+            box-shadow: 0 0 0 2px var(--primary-color);
+            pointer-events: none;
+        }
+        .bottom-nav-item.has-badge .nav-badge {
+            display: inline-flex;
         }
         .bottom-nav-item i {
             font-size: 20px;
@@ -387,6 +411,105 @@
             align-items: center;
             margin-top: 10px;
             flex-wrap: wrap;
+        }
+
+        * { -webkit-tap-highlight-color: transparent; }
+        *:focus, *:focus-visible { outline: none !important; box-shadow: none !important; }
+
+        .face-camera-shell {
+            position: relative;
+            width: 100%;
+            max-width: 560px;
+            margin: 0 auto;
+            border-radius: 22px;
+            overflow: hidden;
+            background: #000;
+            box-shadow: var(--shadow);
+            aspect-ratio: 3 / 4;
+        }
+        .face-camera-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: none !important;
+            background: #000;
+        }
+        .face-overlay-canvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        .face-frame {
+            position: absolute;
+            inset: 12%;
+            border: 2px solid rgba(255,255,255,0.8);
+            border-radius: 24px;
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.15), 0 0 0 9999px rgba(0,0,0,0.12);
+            pointer-events: none;
+            transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+            animation: facePulse 1.6s ease-in-out infinite;
+        }
+        .face-frame.detected {
+            border-color: var(--success-color);
+            box-shadow: inset 0 0 0 1px rgba(76,175,80,0.35), 0 0 22px rgba(76,175,80,0.35), 0 0 0 9999px rgba(0,0,0,0.08);
+            animation: none;
+        }
+        .face-scan-line {
+            position: absolute;
+            left: 14%;
+            right: 14%;
+            height: 2px;
+            top: 18%;
+            background: linear-gradient(90deg, transparent, rgba(79,195,247,0.8), transparent);
+            pointer-events: none;
+            animation: faceScan 2.2s linear infinite;
+            opacity: .85;
+        }
+
+        #absensiVideo, #absensiOverlay, #faceFrame, #faceScanLine,
+        #faceEnrollVideo, #faceEnrollOverlay, #faceEnrollFrame {
+            transform: scaleX(-1);
+            transform-origin: center center;
+        }
+        @keyframes facePulse {
+            0%, 100% { transform: scale(1); opacity: .9; }
+            50% { transform: scale(1.01); opacity: 1; }
+        }
+        @keyframes faceScan {
+            0% { top: 18%; opacity: .1; }
+            20% { opacity: .9; }
+            50% { top: 72%; opacity: .8; }
+            100% { top: 18%; opacity: .1; }
+        }
+        .face-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            background: rgba(79,195,247,0.12);
+            color: var(--accent-color);
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .face-chip.success {
+            background: rgba(76,175,80,0.12);
+            color: var(--success-color);
+        }
+        .message-options-list {
+            display: grid;
+            gap: 10px;
+        }
+        .message-options-note {
+            font-size: 12px;
+            color: var(--light-text);
+        }
+        .message-card.long-press,
+        .announcement-card.long-press {
+            outline: 2px solid var(--accent-color);
+            outline-offset: 2px;
         }
 </style>
 </head>
@@ -578,25 +701,34 @@
                         </div>
 
                         <div class="absensi-controls">
-                            <button class="btn btn-primary" id="absenBtn" disabled>Absen Sekarang</button>
-                            <button class="btn btn-secondary" id="takePhotoBtn">Ambil Foto</button>
+                            <button class="btn btn-secondary" id="takePhotoBtn">Buka Kamera</button>
+                            <button class="btn btn-primary hidden" id="absenBtn" disabled>Upload Absensi</button>
                         </div>
 
                         <div class="photo-preview-container">
-                            <img id="photoPreview" alt="Preview foto">
-                            <div><small>Foto akan disimpan ke log absensi (maks 20KB)</small></div>
+                            <div class="face-camera-shell hidden" id="absensiCameraShell">
+                                <video id="absensiVideo" class="face-camera-video" autoplay muted playsinline></video>
+                                <canvas id="absensiOverlay" class="face-overlay-canvas"></canvas>
+                                <div class="face-frame" id="faceFrame"></div>
+                                <div class="face-scan-line" id="faceScanLine"></div>
+                            </div>
+                            <div style="margin-top:10px; display:flex; justify-content:center; gap:10px; flex-wrap:wrap;">
+                                <span class="face-chip hidden" id="faceDetectChip"><i class="fas fa-circle-notch fa-spin"></i> Menunggu wajah</span>
+                                <span class="face-chip hidden" id="faceMatchChip"><i class="fas fa-user-check"></i> Belum cocok</span>
+                            </div>
+                            
                         </div>
-
-                        <div class="absensi-status" id="absensiStatus">Status: Ambil foto terlebih dahulu.</div>
+                        <img id="photoPreview" alt="Preview foto" style="display:none;">
+                        <div class="absensi-status" id="absensiStatus">Status: Buka kamera untuk mulai deteksi wajah.</div>
 
                         <div id="randomCode"></div>
 
                         <div class="ip-info">
-                            <strong>IP Geolocation (coarse):</strong> <span id="ipInfo">belum dimuat</span>
+                            <span id="ipInfo"></span>
                         </div>
 
                         <div class="location-display">
-                            <strong>Lokasi Kantor Anda:</strong> <span id="lokasiKantorInfo">Memuat...</span>
+                            <span id="lokasiKantorInfo"></span>
                         </div>
 
                         <div class="table-container absensi-log-table">
@@ -618,7 +750,7 @@
                             </table>
                         </div>
 
-                        <input type="file" id="cameraInput" accept="image/*" capture="environment">
+                        <input type="file" id="cameraInput" accept="image/*" capture="environment" class="hidden">
                     </div>
                 </div>
 
@@ -773,6 +905,50 @@
         </div>
     </div>
 
+    <div class="popup" id="faceEnrollmentPopup">
+        <div class="popup-content fullscreen-popup">
+            <div class="popup-header">
+                <h3 class="popup-title">Daftarkan Wajah</h3>
+                <button class="popup-close" id="closeFaceEnrollment"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="popup-body">
+                <div class="absensi-container">
+                    <div class="tiny-note" style="margin-bottom:12px;">Wajah belum terdaftar. Arahkan wajah ke frame lalu tekan tombol daftar.</div>
+                    <div class="face-camera-shell">
+                        <video id="faceEnrollVideo" class="face-camera-video" autoplay muted playsinline></video>
+                        <canvas id="faceEnrollOverlay" class="face-overlay-canvas"></canvas>
+                        <div class="face-frame" id="faceEnrollFrame"></div>
+                        <div class="face-scan-line"></div>
+                    </div>
+                    <div style="margin-top:10px; display:flex; justify-content:center; gap:10px; flex-wrap:wrap;">
+                        <span class="face-chip" id="faceEnrollChip"><i class="fas fa-circle-notch fa-spin"></i> Menunggu wajah</span>
+                    </div>
+                    <div class="absensi-status" id="faceEnrollmentStatus">Memuat kamera...</div>
+                    <div class="actions" style="margin-top: 14px; justify-content: space-between;">
+                        <button class="btn btn-secondary" id="cancelFaceEnrollment">Tutup</button>
+                        <button class="btn btn-primary" id="saveFaceEnrollmentBtn" disabled>Daftarkan Wajah</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="popup" id="messageOptionsPopup">
+        <div class="popup-content">
+            <div class="popup-header">
+                <h3 class="popup-title">Opsi Pesan</h3>
+                <button class="popup-close" id="closeMessageOptions"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="popup-body">
+                <div class="message-options-list">
+                    <div class="message-options-note" id="messageOptionsNote">Pilih aksi yang diinginkan.</div>
+                    <button class="btn btn-secondary" id="deleteMessageForMeBtn"><i class="fas fa-eye-slash"></i> Hapus untuk saya</button>
+                    <button class="btn btn-danger" id="deleteMessageForAllBtn"><i class="fas fa-trash"></i> Hapus untuk semua</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         // Firebase Configuration
         const firebaseConfig = {
@@ -875,6 +1051,21 @@
         let announcementData = [];
         let activeChatTab = 'public';
         let announcementModalItem = null;
+        let absensiVideoStream = null;
+        let faceEnrollStream = null;
+        let absensiDetectionTimer = null;
+        let absensiMatchTimeout = null;
+        let currentAbsensiCoords = null;
+        let faceEnrollTimer = null;
+        let currentFaceDescriptor = null;
+        let currentFaceMatch = false;
+        let currentFaceDistance = null;
+        let currentFaceImage = null;
+        let faceApiLoaded = false;
+        let longPressTimer = null;
+        let longPressTarget = null;
+        let messageDeleteContext = null;
+        let hiddenMessageIds = { chat: new Set(), announcement: new Set() };
 
         // Variabel untuk state klik pada kolom nomor tabel supplier
         let supplierRowState = new Map(); // key: nama supplier, value: 'checked' atau 'unchecking'
@@ -926,6 +1117,24 @@
         const announcementModalBody = document.getElementById('announcementModalBody');
         const closeAnnouncementModal = document.getElementById('closeAnnouncementModal');
         const datetimeHeader = document.getElementById('datetime-header');
+        const absensiVideo = document.getElementById('absensiVideo');
+        const absensiCameraShell = document.getElementById('absensiCameraShell');
+        const absensiOverlay = document.getElementById('absensiOverlay');
+        const faceFrame = document.getElementById('faceFrame');
+        const faceDetectChip = document.getElementById('faceDetectChip');
+        const faceMatchChip = document.getElementById('faceMatchChip');
+        const faceEnrollmentPopup = document.getElementById('faceEnrollmentPopup');
+        const faceEnrollVideo = document.getElementById('faceEnrollVideo');
+        const faceEnrollOverlay = document.getElementById('faceEnrollOverlay');
+        const faceEnrollFrame = document.getElementById('faceEnrollFrame');
+        const faceEnrollChip = document.getElementById('faceEnrollChip');
+        const faceEnrollmentStatus = document.getElementById('faceEnrollmentStatus');
+        const saveFaceEnrollmentBtn = document.getElementById('saveFaceEnrollmentBtn');
+        const cancelFaceEnrollment = document.getElementById('cancelFaceEnrollment');
+        const messageOptionsPopup = document.getElementById('messageOptionsPopup');
+        const messageOptionsNote = document.getElementById('messageOptionsNote');
+        const deleteMessageForMeBtn = document.getElementById('deleteMessageForMeBtn');
+        const deleteMessageForAllBtn = document.getElementById('deleteMessageForAllBtn');
 
         // Absensi DOM Elements
         const absenBtn = document.getElementById('absenBtn');
@@ -1306,6 +1515,55 @@
 
 
         const getCacheKey = (name) => `fupa_${name}_${currentUser?.uid || 'guest'}`;
+        const getChatReadKey = () => `fupa_chat_read_state_${currentUser?.uid || 'guest'}`;
+
+        const loadChatReadState = () => {
+            try {
+                return JSON.parse(localStorage.getItem(getChatReadKey()) || '{}') || {};
+            } catch (error) {
+                return {};
+            }
+        };
+
+        const saveChatReadState = (state) => {
+            try {
+                localStorage.setItem(getChatReadKey(), JSON.stringify(state || {}));
+            } catch (error) {
+                console.warn('Gagal simpan state chat terbaca', error);
+            }
+        };
+
+        const updateChatNotificationBadge = () => {
+            const badge = document.getElementById('chatNavBadge');
+            const navItem = badge?.closest('.bottom-nav-item');
+            if (!badge || !navItem) return;
+            if (userRole !== 'Karyawan') {
+                badge.textContent = '';
+                navItem.classList.remove('has-badge');
+                return;
+            }
+            const state = loadChatReadState();
+            const lastSeenAt = Number(state.lastSeenAt || 0);
+            const unreadCount = [...chatPublicData, ...announcementData].filter(item => {
+                const createdAtValue = Number(item.createdAtValue || 0);
+                const createdBy = item.createdBy || '';
+                return createdAtValue > lastSeenAt && createdBy !== currentUser?.uid;
+            }).length;
+
+            if (unreadCount > 0) {
+                badge.textContent = unreadCount > 99 ? '99+' : String(unreadCount);
+                navItem.classList.add('has-badge');
+            } else {
+                badge.textContent = '';
+                navItem.classList.remove('has-badge');
+            }
+        };
+
+        const markChatNotificationsSeen = () => {
+            if (!currentUser?.uid) return;
+            saveChatReadState({ lastSeenAt: Date.now() });
+            updateChatNotificationBadge();
+        };
 
         const loadCachedList = (name) => {
             try {
@@ -1357,6 +1615,34 @@
             chatPublicData = loadCachedList('public_chat');
         };
 
+        const getHiddenMessagesKey = (type) => `hidden_${type}_${currentUser?.uid || 'guest'}`;
+
+        const loadHiddenMessages = () => {
+            try {
+                hiddenMessageIds.chat = new Set(JSON.parse(localStorage.getItem(getHiddenMessagesKey('chat')) || '[]'));
+                hiddenMessageIds.announcement = new Set(JSON.parse(localStorage.getItem(getHiddenMessagesKey('announcement')) || '[]'));
+            } catch (error) {
+                hiddenMessageIds.chat = new Set();
+                hiddenMessageIds.announcement = new Set();
+            }
+        };
+
+        const saveHiddenMessages = () => {
+            try {
+                localStorage.setItem(getHiddenMessagesKey('chat'), JSON.stringify([...hiddenMessageIds.chat]));
+                localStorage.setItem(getHiddenMessagesKey('announcement'), JSON.stringify([...hiddenMessageIds.announcement]));
+            } catch (error) {
+                console.warn('Gagal simpan hidden message', error);
+            }
+        };
+
+        const hideMessageLocally = (type, id) => {
+            if (!hiddenMessageIds[type]) hiddenMessageIds[type] = new Set();
+            hiddenMessageIds[type].add(id);
+            saveHiddenMessages();
+        };
+
+        const isMessageHiddenLocally = (type, id) => Boolean(hiddenMessageIds[type] && hiddenMessageIds[type].has(id));
 
         const openAnnouncementModal = (announcement) => {
     announcementModalItem = announcement;
@@ -1378,11 +1664,12 @@ const closeAnnouncement = () => {
 };
 
         const renderAnnouncementList = (items) => {
-            if (!items.length) {
+            const visibleItems = (items || []).filter(item => !(item.hiddenFor || []).includes(currentUser?.uid) && !isMessageHiddenLocally('announcement', item.id));
+            if (!visibleItems.length) {
                 return '<div class="chat-empty">Belum ada pengumuman.</div>';
             }
-            return items.map(item => `
-                <div class="announcement-card" data-announcement-id="${item.id}">
+            return visibleItems.map(item => `
+                <div class="announcement-card" data-announcement-id="${item.id}" data-message-type="announcement" data-owner-id="${escapeHtml(item.createdBy || '')}" data-owner-name="${escapeHtml(item.createdByName || 'Admin')}" data-created-at-value="${item.createdAtValue || Date.now()}">
                     <div class="announcement-head">
                         <div>
                             <div class="announcement-title">${escapeHtml(item.judul || 'Tanpa judul')}</div>
@@ -1401,14 +1688,15 @@ const closeAnnouncement = () => {
         };
 
         const renderPublicChatList = (items) => {
-            if (!items.length) {
+            const visibleItems = (items || []).filter(item => !(item.hiddenFor || []).includes(currentUser?.uid) && !isMessageHiddenLocally('chat', item.id));
+            if (!visibleItems.length) {
                 return '<div class="chat-empty">Belum ada chat publik.</div>';
             }
-            return items.map(item => {
+            return visibleItems.map(item => {
                 const isMine = item.createdBy === currentUser?.uid;
                 return `
                 <div class="message-row ${isMine ? 'mine' : 'other'}">
-                    <div class="message-card ${isMine ? 'message-mine' : 'message-other'}">
+                    <div class="message-card ${isMine ? 'message-mine' : 'message-other'}" data-message-id="${item.id}" data-message-type="chat" data-owner-id="${escapeHtml(item.createdBy || '')}" data-owner-name="${escapeHtml(item.createdByName || 'Anonim')}" data-created-at-value="${item.createdAtValue || Date.now()}">
                         <div class="message-head">
                             <div>
                                 <div class="message-name">${escapeHtml(item.createdByName || 'Anonim')}</div>
@@ -1606,12 +1894,31 @@ const closeAnnouncement = () => {
                 });
             });
 
+            section.querySelectorAll('.message-card').forEach(card => {
+                bindLongPress(card, () => {
+                    const messageId = card.getAttribute('data-message-id');
+                    const ownerId = card.getAttribute('data-owner-id');
+                    const ownerName = card.getAttribute('data-owner-name') || 'Anonim';
+                    const createdAtValue = Number(card.getAttribute('data-created-at-value') || Date.now());
+                    openMessageOptions({ id: messageId, type: 'chat', ownerId, ownerName, createdAtValue });
+                });
+            });
+
             section.querySelectorAll('.announcement-card').forEach(card => {
                 card.addEventListener('click', () => {
                     const item = announcementData.find(a => a.id === card.getAttribute('data-announcement-id'));
                     if (item) openAnnouncementModal(item);
                 });
+                bindLongPress(card, () => {
+                    const announcementId = card.getAttribute('data-announcement-id');
+                    const ownerId = card.getAttribute('data-owner-id');
+                    const ownerName = card.getAttribute('data-owner-name') || 'Admin';
+                    const createdAtValue = Number(card.getAttribute('data-created-at-value') || Date.now());
+                    openMessageOptions({ id: announcementId, type: 'announcement', ownerId, ownerName, createdAtValue });
+                });
             });
+            if (targetId === 'chatHub') markChatNotificationsSeen();
+            updateChatNotificationBadge();
         };
 
         // Image Compression and Upload Functions
@@ -1697,6 +2004,315 @@ const closeAnnouncement = () => {
             while (n--) u8arr[n] = bstr.charCodeAt(n);
             return new Blob([u8arr], { type: mime });
         };
+
+        const FACE_API_MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
+
+        const loadFaceApiModels = async () => {
+            if (faceApiLoaded) return true;
+            if (!window.faceapi) throw new Error('face-api.js gagal dimuat');
+            await Promise.all([
+                faceapi.nets.tinyFaceDetector.loadFromUri(FACE_API_MODEL_URL),
+                faceapi.nets.faceLandmark68TinyNet.loadFromUri(FACE_API_MODEL_URL),
+                faceapi.nets.faceRecognitionNet.loadFromUri(FACE_API_MODEL_URL)
+            ]);
+            faceApiLoaded = true;
+            return true;
+        };
+
+        const stopMediaStream = (stream) => {
+            if (!stream) return;
+            stream.getTracks().forEach(track => {
+                try { track.stop(); } catch (e) {}
+            });
+        };
+
+        const stopVideoStream = (videoEl) => {
+            if (!videoEl) return;
+            const stream = videoEl.srcObject;
+            if (stream) stopMediaStream(stream);
+            videoEl.srcObject = null;
+        };
+
+        const startCamera = async (videoEl, facingMode = 'user') => {
+            if (!navigator.mediaDevices?.getUserMedia) throw new Error('Kamera tidak didukung browser');
+            stopVideoStream(videoEl);
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode,
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                },
+                audio: false
+            });
+            videoEl.srcObject = stream;
+            await videoEl.play();
+            return stream;
+        };
+
+        const captureVideoFrame = (videoEl, maxDimension = 960, quality = 0.82, mirror = true) => {
+            if (!videoEl || !videoEl.videoWidth || !videoEl.videoHeight) throw new Error('Video belum siap');
+            const canvas = document.createElement('canvas');
+            const ratio = Math.min(1, maxDimension / Math.max(videoEl.videoWidth, videoEl.videoHeight));
+            canvas.width = Math.max(1, Math.round(videoEl.videoWidth * ratio));
+            canvas.height = Math.max(1, Math.round(videoEl.videoHeight * ratio));
+            const ctx = canvas.getContext('2d');
+            if (mirror) {
+                ctx.translate(canvas.width, 0);
+                ctx.scale(-1, 1);
+            }
+            ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+            return canvas.toDataURL('image/jpeg', quality);
+        };
+
+        const resizeCanvasToVideo = (videoEl, canvasEl) => {
+            if (!videoEl || !canvasEl) return { width: 0, height: 0 };
+            const width = videoEl.videoWidth || videoEl.clientWidth || 0;
+            const height = videoEl.videoHeight || videoEl.clientHeight || 0;
+            if (!width || !height) return { width: 0, height: 0 };
+            const displaySize = { width, height };
+            canvasEl.width = width;
+            canvasEl.height = height;
+            canvasEl.style.width = '100%';
+            canvasEl.style.height = '100%';
+            return displaySize;
+        };
+
+        const setFaceBadge = (chipEl, status, text, iconClass = 'fas fa-circle-notch fa-spin') => {
+            if (!chipEl) return;
+            chipEl.classList.toggle('success', status === 'success');
+            chipEl.innerHTML = `<i class="${iconClass}"></i> ${escapeHtml(text)}`;
+        };
+
+        const updateFaceOverlayState = (frameEl, detected) => {
+            if (!frameEl) return;
+            frameEl.classList.toggle('detected', !!detected);
+        };
+
+        const getFaceEnrollmentForCurrentUser = async () => {
+            const doc = await db.collection('users').doc(currentUser.uid).get();
+            if (!doc.exists) return null;
+            const data = doc.data() || {};
+            return data.faceEnrollment || null;
+        };
+
+        const saveFaceEnrollmentForCurrentUser = async (payload) => {
+            await db.collection('users').doc(currentUser.uid).set({
+                faceEnrollment: payload,
+                faceEnrollmentUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+        };
+
+        const drawFaceDetections = async (videoEl, canvasEl, detectionResult) => {
+            if (!videoEl || !canvasEl || !window.faceapi) return;
+            const displaySize = resizeCanvasToVideo(videoEl, canvasEl);
+            if (!displaySize.width || !displaySize.height) return;
+            const resized = faceapi.resizeResults(detectionResult ? [detectionResult] : [], displaySize);
+            const ctx = canvasEl.getContext('2d');
+            ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+            if (resized && resized.length) {
+                faceapi.draw.drawDetections(canvasEl, resized);
+                faceapi.draw.drawFaceLandmarks(canvasEl, resized);
+            }
+        };
+
+        const compareFaceDescriptor = (storedDescriptor, currentDescriptor) => {
+            if (!storedDescriptor || !currentDescriptor) return { matched: false, distance: null };
+            const stored = Float32Array.from(storedDescriptor);
+            const distance = faceapi.euclideanDistance(stored, currentDescriptor);
+            return { matched: distance < 0.45, distance };
+        };
+
+        const ensureCurrentFaceCapture = () => {
+            if (!absensiVideo) throw new Error('Kamera absensi belum siap');
+            currentFaceImage = captureVideoFrame(absensiVideo, 960, 0.86);
+            currentPhoto = currentFaceImage;
+            return currentFaceImage;
+        };
+
+        const clearFaceState = () => {
+            currentFaceDescriptor = null;
+            currentFaceMatch = false;
+            currentFaceDistance = null;
+            currentFaceImage = null;
+            if (faceDetectChip) setFaceBadge(faceDetectChip, 'idle', 'Menunggu wajah', 'fas fa-circle-notch fa-spin');
+            if (faceMatchChip) setFaceBadge(faceMatchChip, 'idle', 'Belum cocok', 'fas fa-user-check');
+            updateFaceOverlayState(faceFrame, false);
+        };
+
+        const clearAbsensiMatchTimeout = () => {
+            if (absensiMatchTimeout) {
+                clearTimeout(absensiMatchTimeout);
+                absensiMatchTimeout = null;
+            }
+        };
+
+        const showAbsensiCamera = () => {
+            absensiCameraShell?.classList.remove('hidden');
+            faceDetectChip?.classList.remove('hidden');
+            faceMatchChip?.classList.remove('hidden');
+            takePhotoBtn?.classList.add('hidden');
+            absenBtn?.classList.add('hidden');
+            absenBtn.disabled = true;
+            updateAbsensiStatus('Kamera aktif. Arahkan wajah ke frame.', 'info');
+        };
+
+        const hideAbsensiCamera = () => {
+            clearAbsensiMatchTimeout();
+            absensiCameraShell?.classList.add('hidden');
+            faceDetectChip?.classList.add('hidden');
+            faceMatchChip?.classList.add('hidden');
+            stopVideoStream(absensiVideo);
+            if (absensiDetectionTimer) {
+                clearInterval(absensiDetectionTimer);
+                absensiDetectionTimer = null;
+            }
+            updateFaceOverlayState(faceFrame, false);
+        };
+
+        const resetAbsensiUI = () => {
+            hideAbsensiCamera();
+            clearFaceState();
+            currentAbsensiCoords = null;
+            currentFaceImage = null;
+            currentPhoto = null;
+            photoPreview.style.display = 'none';
+            photoPreview.removeAttribute('src');
+            takePhotoBtn?.classList.remove('hidden');
+            absenBtn?.classList.add('hidden');
+            absenBtn.disabled = true;
+            updateAbsensiStatus('Status: Buka kamera untuk mulai deteksi wajah.', 'info');
+        };
+
+        const loadCurrentUserFaceEnrollment = async () => {
+            try {
+                return await getFaceEnrollmentForCurrentUser();
+            } catch (error) {
+                console.warn('Gagal mengambil face enrollment', error);
+                return null;
+            }
+        };
+
+        const openFaceEnrollmentPopup = async () => {
+            if (!faceEnrollmentPopup || userRole === 'Admin') return;
+            faceEnrollmentPopup.classList.add('active');
+            faceEnrollmentStatus.textContent = 'Memuat kamera dan model wajah...';
+            saveFaceEnrollmentBtn.disabled = true;
+            try {
+                await loadFaceApiModels();
+                faceEnrollStream = await startCamera(faceEnrollVideo, 'user');
+                clearFaceState();
+                if (faceEnrollTimer) clearInterval(faceEnrollTimer);
+                faceEnrollTimer = setInterval(async () => {
+                    try {
+                        const detection = await faceapi.detectSingleFace(faceEnrollVideo, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
+                            .withFaceLandmarks(true)
+                            .withFaceDescriptor();
+                        await drawFaceDetections(faceEnrollVideo, faceEnrollOverlay, detection);
+                        if (detection) {
+                            currentFaceDescriptor = detection.descriptor;
+                            updateFaceOverlayState(faceEnrollFrame, true);
+                            faceEnrollmentStatus.textContent = 'Wajah terdeteksi. Tekan "Daftarkan Wajah".';
+                            setFaceBadge(faceEnrollChip, 'success', 'Wajah terdeteksi', 'fas fa-user-check');
+                            saveFaceEnrollmentBtn.disabled = false;
+                        } else {
+                            currentFaceDescriptor = null;
+                            updateFaceOverlayState(faceEnrollFrame, false);
+                            faceEnrollmentStatus.textContent = 'Arahkan wajah ke frame.';
+                            setFaceBadge(faceEnrollChip, 'idle', 'Menunggu wajah', 'fas fa-circle-notch fa-spin');
+                            saveFaceEnrollmentBtn.disabled = true;
+                        }
+                    } catch (error) {
+                        faceEnrollmentStatus.textContent = 'Deteksi wajah gagal: ' + error.message;
+                    }
+                }, 700);
+            } catch (error) {
+                faceEnrollmentStatus.textContent = 'Gagal membuka kamera: ' + error.message;
+            }
+        };
+
+        const closeFaceEnrollmentPopup = () => {
+            if (faceEnrollTimer) { clearInterval(faceEnrollTimer); faceEnrollTimer = null; }
+            stopVideoStream(faceEnrollVideo);
+            if (faceEnrollmentPopup) faceEnrollmentPopup.classList.remove('active');
+        };
+
+        const saveFaceEnrollment = async () => {
+            try {
+                if (!currentFaceDescriptor) {
+                    faceEnrollmentStatus.textContent = 'Wajah belum terdeteksi.';
+                    return;
+                }
+                saveFaceEnrollmentBtn.disabled = true;
+                faceEnrollmentStatus.textContent = 'Mengambil frame wajah...';
+                const faceImageData = captureVideoFrame(faceEnrollVideo, 720, 0.82);
+                const compressed = faceImageData;
+                faceEnrollmentStatus.textContent = 'Mengupload ke Cloudinary...';
+                const imageUrl = await uploadToCloudinary(compressed, 250);
+                const payload = {
+                    descriptor: Array.from(currentFaceDescriptor),
+                    imageUrl,
+                    model: 'face-api.js',
+                    enrolledAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                };
+                await saveFaceEnrollmentForCurrentUser(payload);
+                faceEnrollmentStatus.textContent = 'Wajah berhasil didaftarkan.';
+                closeFaceEnrollmentPopup();
+            } catch (error) {
+                console.error(error);
+                faceEnrollmentStatus.textContent = 'Gagal menyimpan wajah: ' + error.message;
+                saveFaceEnrollmentBtn.disabled = false;
+            }
+        };
+
+        const getMessageAgeMs = (createdAtValue) => {
+            if (!createdAtValue) return Number.MAX_SAFE_INTEGER;
+            return Date.now() - Number(createdAtValue);
+        };
+
+        const openMessageOptions = ({ id, type, ownerId, ownerName, createdAtValue }) => {
+            messageDeleteContext = { id, type, ownerId, ownerName, createdAtValue };
+            if (!messageOptionsPopup) return;
+            const isMine = ownerId === currentUser?.uid;
+            const ageMs = getMessageAgeMs(createdAtValue);
+            const withinWindow = ageMs <= 10000;
+            const canDeleteForAll = userRole === 'Admin' || (!isMine && type === 'chat' && withinWindow);
+            const ageText = Number.isFinite(ageMs) ? `${Math.max(0, Math.ceil(ageMs / 1000))} dtk` : '-';
+            messageOptionsNote.textContent = `${ownerName || 'Pengirim'} • ${type === 'announcement' ? 'Pengumuman' : 'Chat publik'} • ${ageText}`;
+            deleteMessageForMeBtn.style.display = 'inline-flex';
+            deleteMessageForAllBtn.style.display = canDeleteForAll ? 'inline-flex' : 'none';
+            deleteMessageForAllBtn.disabled = !canDeleteForAll;
+            messageOptionsPopup.classList.add('active');
+        };
+
+        const closeMessageOptions = () => {
+            messageDeleteContext = null;
+            messageOptionsPopup?.classList.remove('active');
+        };
+
+        const deleteChatForMe = async (id) => {
+            hideMessageLocally('chat', id);
+        };
+
+        const deleteAnnouncementForMe = async (id) => {
+            hideMessageLocally('announcement', id);
+        };
+
+        const deleteChatForAll = async (id) => {
+            if (userRole !== 'Admin' && messageDeleteContext) {
+                const ageMs = getMessageAgeMs(messageDeleteContext.createdAtValue);
+                if (messageDeleteContext.ownerId === currentUser?.uid || ageMs > 10000) {
+                    throw new Error('Karyawan hanya bisa hapus chat publik dalam 10 detik.');
+                }
+            }
+            await db.collection('chatPublik').doc(id).delete();
+        };
+
+        const deleteAnnouncementForAll = async (id) => {
+            await db.collection('pengumuman').doc(id).delete();
+        };
+
+        const bindLongPress = () => {};
 
         // Geolocation Utilities
         const toRad = (deg) => deg * Math.PI / 180;
@@ -1848,6 +2464,7 @@ const closeAnnouncement = () => {
                 chatPublicData = [];
                 snapshot.forEach(doc => chatPublicData.push(normalizeChatDoc({ id: doc.id, ...doc.data() })));
                 savePublicChatCache();
+                updateChatNotificationBadge();
                 if (!document.getElementById('chatHub').classList.contains('hidden')) renderChatSection('chatHub');
                 if (!document.getElementById('home').classList.contains('hidden') && userRole === 'Admin') renderHome();
             });
@@ -1856,6 +2473,7 @@ const closeAnnouncement = () => {
                 announcementData = [];
                 snapshot.forEach(doc => announcementData.push(normalizeChatDoc({ id: doc.id, ...doc.data() })));
                 saveAnnouncementCache();
+                updateChatNotificationBadge();
                 if (!document.getElementById('chatHub').classList.contains('hidden')) renderChatSection('chatHub');
                 if (!document.getElementById('home').classList.contains('hidden') && userRole === 'Admin') renderHome();
             });
@@ -2695,14 +3313,118 @@ const closeAnnouncement = () => {
             cameraInput.value = '';
         };
 
+        const startAbsensiFaceDetection = async (enrollment = null) => {
+            if (absensiDetectionTimer) { clearInterval(absensiDetectionTimer); absensiDetectionTimer = null; }
+            clearAbsensiMatchTimeout();
+            if (!absensiVideo) return;
+            updateFaceOverlayState(faceFrame, false);
+            currentFaceMatch = false;
+            currentFaceDescriptor = null;
+            currentFaceDistance = null;
+            currentFaceImage = null;
+            let autoCaptured = false;
+            if (absensiVideo.readyState < 2) {
+                await new Promise(resolve => {
+                    const onReady = () => { absensiVideo.removeEventListener('loadedmetadata', onReady); resolve(); };
+                    absensiVideo.addEventListener('loadedmetadata', onReady);
+                });
+            }
+            absensiMatchTimeout = setTimeout(() => {
+                if (autoCaptured) return;
+                if (absensiCameraShell?.classList.contains('hidden')) return;
+                updateAbsensiStatus('Wajah tidak cocok dalam 30 detik. Kamera ditutup.', 'warning');
+                setFaceBadge(faceDetectChip, 'idle', 'Menunggu wajah', 'fas fa-circle-notch fa-spin');
+                setFaceBadge(faceMatchChip, 'idle', 'Belum cocok', 'fas fa-user-check');
+                currentPhoto = null;
+                currentFaceImage = null;
+                currentFaceMatch = false;
+                currentAbsensiCoords = null;
+                photoPreview.style.display = 'none';
+                photoPreview.removeAttribute('src');
+                absenBtn.classList.add('hidden');
+                absenBtn.disabled = true;
+                takePhotoBtn.classList.remove('hidden');
+                hideAbsensiCamera();
+            }, 30000);
+            absensiDetectionTimer = setInterval(async () => {
+                try {
+                    if (!absensiVideo?.srcObject || absensiCameraShell?.classList.contains('hidden')) return;
+                    const detection = await faceapi.detectSingleFace(absensiVideo, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
+                        .withFaceLandmarks(true)
+                        .withFaceDescriptor();
+                    await drawFaceDetections(absensiVideo, absensiOverlay, detection);
+                    if (detection) {
+                        currentFaceDescriptor = detection.descriptor;
+                        updateFaceOverlayState(faceFrame, true);
+                        faceDetectChip?.classList.remove('hidden');
+                        faceMatchChip?.classList.remove('hidden');
+                        setFaceBadge(faceDetectChip, 'success', 'Wajah terdeteksi', 'fas fa-user-check');
+                        if (enrollment?.descriptor) {
+                            const result = compareFaceDescriptor(enrollment.descriptor, currentFaceDescriptor);
+                            currentFaceMatch = result.matched;
+                            currentFaceDistance = result.distance;
+                            if (result.matched && !autoCaptured) {
+                                autoCaptured = true;
+                                try {
+                                    currentFaceImage = ensureCurrentFaceCapture();
+                                    photoPreview.src = currentFaceImage;
+                                    photoPreview.style.display = 'block';
+                                    setFaceBadge(faceMatchChip, 'success', `Cocok (${result.distance.toFixed(2)})`, 'fas fa-check-circle');
+                                    absenBtn.classList.remove('hidden');
+                                    absenBtn.disabled = false;
+                                    takePhotoBtn.classList.add('hidden');
+                                    updateAbsensiStatus('Wajah cocok. Foto otomatis diambil. Silakan upload absensi.', 'success');
+                                    clearAbsensiMatchTimeout();
+                                    hideAbsensiCamera();
+                                } catch (captureError) {
+                                    autoCaptured = false;
+                                    updateAbsensiStatus('Gagal mengambil foto otomatis: ' + captureError.message, 'error');
+                                }
+                            } else if (result.matched) {
+                                setFaceBadge(faceMatchChip, 'success', `Cocok (${result.distance.toFixed(2)})`, 'fas fa-check-circle');
+                            } else {
+                                setFaceBadge(faceMatchChip, 'idle', `Belum cocok (${result.distance.toFixed(2)})`, 'fas fa-user-times');
+                                absenBtn.classList.add('hidden');
+                                absenBtn.disabled = true;
+                                updateAbsensiStatus('Wajah terdeteksi, tapi belum cocok dengan data tersimpan.', 'warning');
+                            }
+                        } else {
+                            currentFaceMatch = false;
+                            setFaceBadge(faceMatchChip, 'idle', 'Wajah belum terdaftar', 'fas fa-user-slash');
+                            absenBtn.classList.add('hidden');
+                            absenBtn.disabled = true;
+                        }
+                    } else {
+                        currentFaceDescriptor = null;
+                        currentFaceMatch = false;
+                        currentFaceDistance = null;
+                        setFaceBadge(faceDetectChip, 'idle', 'Menunggu wajah', 'fas fa-circle-notch fa-spin');
+                        setFaceBadge(faceMatchChip, 'idle', 'Belum cocok', 'fas fa-user-check');
+                        updateFaceOverlayState(faceFrame, false);
+                        absenBtn.classList.add('hidden');
+                        absenBtn.disabled = true;
+                    }
+                } catch (error) {
+                    console.warn('Deteksi wajah absensi gagal:', error);
+                }
+            }, 750);
+        };
+
         const doAbsen = async () => {
-            if (!currentPhoto) { updateAbsensiStatus('Harap ambil foto terlebih dahulu sebelum absen.', 'error'); return; }
+            if (!currentPhoto) {
+                updateAbsensiStatus('Frame wajah belum tersedia. Silakan buka kamera dan tunggu deteksi wajah.', 'error');
+                return;
+            }
+            if (!currentFaceMatch && !currentFaceImage) {
+                updateAbsensiStatus('Wajah belum cocok. Pastikan kamera sudah mengenali wajah Anda.', 'error');
+                return;
+            }
             const sudahPresensi = await sudahPresensiHariIni();
             if (sudahPresensi) { updateAbsensiStatus('Anda sudah melakukan presensi hari ini. Hanya diperbolehkan sekali presensi per hari.', 'error'); return; }
             const waktuValidasi = validasiWaktuPresensi();
             if (!waktuValidasi.valid) { updateAbsensiStatus(waktuValidasi.message, 'error'); return; }
             if (!navigator.geolocation) { updateAbsensiStatus('Geolocation tidak didukung browser.', 'error'); return; }
-            absenBtn.disabled = true; takePhotoBtn.disabled = true;
+            absenBtn.disabled = true; takePhotoBtn.classList.add('hidden');
             let countdown = 25;
             const gimmickMessages = [ "Menginisialisasi sistem absensi...", "Memulai deteksi lokasi...", "Memeriksa koneksi jaringan...", "Memverifikasi perangkat...", "Menganalisis lingkungan...", "Memproses data geolokasi...", "Memvalidasi keamanan...", "Checking Lokasi Palsu...", "Mencatat laporan...", "Menyiapkan log sistem...", "Mengenkripsi data...", "Melakukan final check..." ];
             let messageIndex = 0;
@@ -2722,11 +3444,11 @@ const closeAnnouncement = () => {
 
         const onPositionSuccess = async (pos, waktuPresensi) => {
             const sudahPresensi = await sudahPresensiHariIni();
-            if (sudahPresensi) { updateAbsensiStatus('Anda sudah melakukan presensi hari ini. Hanya diperbolehkan sekali presensi per hari.', 'error'); absenBtn.disabled = false; takePhotoBtn.disabled = false; return; }
+            if (sudahPresensi) { updateAbsensiStatus('Anda sudah melakukan presensi hari ini. Hanya diperbolehkan sekali presensi per hari.', 'error'); absenBtn.disabled = false; takePhotoBtn.classList.remove('hidden'); return; }
             const waktuValidasi = validasiWaktuPresensi();
-            if (!waktuValidasi.valid) { updateAbsensiStatus(waktuValidasi.message, 'error'); absenBtn.disabled = false; takePhotoBtn.disabled = false; return; }
-            if (!currentPhoto) { updateAbsensiStatus('Foto tidak ditemukan. Harap ambil foto ulang.', 'error'); absenBtn.disabled = false; takePhotoBtn.disabled = false; return; }
-            if (!kantorLocation || !kantorLocation.lokasiCabang) { updateAbsensiStatus('Lokasi kantor belum diatur. Silakan hubungi admin.', 'error'); absenBtn.disabled = false; takePhotoBtn.disabled = false; return; }
+            if (!waktuValidasi.valid) { updateAbsensiStatus(waktuValidasi.message, 'error'); absenBtn.disabled = false; takePhotoBtn.classList.remove('hidden'); return; }
+            if (!currentPhoto) { updateAbsensiStatus('Frame wajah tidak ditemukan. Harap buka kamera ulang.', 'error'); absenBtn.disabled = false; takePhotoBtn.classList.remove('hidden'); return; }
+            if (!kantorLocation || !kantorLocation.lokasiCabang) { updateAbsensiStatus('Lokasi kantor belum diatur. Silakan hubungi admin.', 'error'); absenBtn.disabled = false; takePhotoBtn.classList.remove('hidden'); return; }
             const coords = pos.coords;
             const clientTs = pos.timestamp || Date.now();
             const latitude = coords.latitude;
@@ -2751,13 +3473,13 @@ const closeAnnouncement = () => {
             const inside = dist <= kantorRadius;
             if (!inside) {
                 updateAbsensiStatus(`Anda berada di luar radius (${Math.round(dist)} m dari kantor). Presensi tidak dapat dilakukan.`, 'error');
-                absenBtn.disabled = false; takePhotoBtn.disabled = false;
-                currentPhoto = null; photoPreview.style.display = 'none';
+                absenBtn.disabled = false; takePhotoBtn.classList.remove('hidden');
+                currentPhoto = null;
                 return;
             }
             let fotoUrl = null;
             if (currentPhoto) {
-                try { updateAbsensiStatus('Mengupload foto (maksimal 20KB)...', 'info'); fotoUrl = await uploadToCloudinary(currentPhoto); }
+                try { updateAbsensiStatus('Mengupload frame wajah ke Cloudinary...', 'info'); fotoUrl = await uploadToCloudinary(currentPhoto); }
                 catch (error) { console.error("Error uploading photo:", error); flags.push('photo_upload_failed'); }
             }
             const record = {
@@ -2775,39 +3497,118 @@ const closeAnnouncement = () => {
                 ip_lat: ipGeo ? ipGeo.lat : null,
                 ip_lon: ipGeo ? ipGeo.lon : null,
                 foto_url: fotoUrl,
+                face_match: currentFaceMatch,
+                face_distance: currentFaceDistance,
+                face_descriptor: currentFaceDescriptor ? Array.from(currentFaceDescriptor) : null,
                 flags,
                 user_agent: navigator.userAgent
             };
             try {
                 await addAbsensi(record);
-                absenBtn.disabled = false; takePhotoBtn.disabled = false;
+                absenBtn.disabled = false; takePhotoBtn.classList.remove('hidden');
                 if (flags.length > 0) updateAbsensiStatus(`Absensi ${waktuPresensi.status} berhasil (flagged): ${flags.join(', ')}`, 'warning');
                 else updateAbsensiStatus(`Absensi ${waktuPresensi.status} berhasil! Jarak ${Math.round(dist)} m dari kantor Anda.`, 'success');
-                currentPhoto = null; photoPreview.style.display = 'none';
+                currentPhoto = null;
                 absenBtn.disabled = true;
                 const absensiData = await getAbsensiData();
                 renderAbsensiTable(absensiData);
             } catch (error) {
                 console.error("Error saving absensi:", error);
                 updateAbsensiStatus('Gagal menyimpan data absensi: ' + error.message, 'error');
-                absenBtn.disabled = false; takePhotoBtn.disabled = false;
+                absenBtn.disabled = false; takePhotoBtn.classList.remove('hidden');
             }
         };
 
         const onPositionError = (err) => {
             updateAbsensiStatus('Gagal mendapatkan lokasi: ' + err.message, 'error');
-            absenBtn.disabled = false; takePhotoBtn.disabled = false;
+            absenBtn.disabled = false;
+            takePhotoBtn.classList.remove('hidden');
+            absenBtn.classList.add('hidden');
+            hideAbsensiCamera();
         };
 
         const setupAbsensiListeners = () => {
+            if (setupAbsensiListeners.bound) return;
+            setupAbsensiListeners.bound = true;
             if (absenBtn) absenBtn.addEventListener('click', doAbsen);
-            if (takePhotoBtn) takePhotoBtn.addEventListener('click', () => cameraInput.click());
-            if (cameraInput) cameraInput.addEventListener('change', handlePhotoCapture);
+            if (takePhotoBtn) takePhotoBtn.addEventListener('click', async () => {
+                try {
+                    if (userRole === 'Admin') {
+                        updateAbsensiStatus('Fitur absensi wajah tidak tersedia untuk admin.', 'info');
+                        return;
+                    }
+                    const waktuValidasi = validasiWaktuPresensi();
+                    if (!waktuValidasi.valid) {
+                        updateAbsensiStatus(waktuValidasi.message, 'error');
+                        return;
+                    }
+                    const sudahPresensi = await sudahPresensiHariIni();
+                    if (sudahPresensi) {
+                        updateAbsensiStatus('Anda sudah melakukan presensi hari ini. Hanya diperbolehkan sekali presensi per hari.', 'error');
+                        return;
+                    }
+                    if (!kantorLocation || !kantorLocation.lokasiCabang) {
+                        updateAbsensiStatus('Lokasi kantor belum diatur. Silakan hubungi admin.', 'error');
+                        return;
+                    }
+                    updateAbsensiStatus('Memeriksa lokasi presensi...', 'info');
+                    const pos = await getCurrentAbsensiPosition();
+                    const coords = pos.coords;
+                    const latitude = coords.latitude;
+                    const longitude = coords.longitude;
+                    const accuracy = coords.accuracy || null;
+                    const altitude = coords.altitude || null;
+                    const heading = coords.heading || null;
+                    const speed = coords.speed || null;
+                    const kantorLat = kantorLocation.lokasiCabang.lat;
+                    const kantorLon = kantorLocation.lokasiCabang.lon;
+                    const kantorRadius = kantorLocation.lokasiCabang.radius || 100;
+                    const dist = distanceMeters(latitude, longitude, kantorLat, kantorLon);
+                    if (dist > kantorRadius) {
+                        updateAbsensiStatus(`Anda berada di luar radius (${Math.round(dist)} m dari kantor). Presensi tidak dapat dilakukan.`, 'error');
+                        return;
+                    }
+
+                    const absensiPosition = {
+                        latitude,
+                        longitude,
+                        accuracy,
+                        altitude,
+                        heading,
+                        speed,
+                        timestamp: pos.timestamp || Date.now()
+                    };
+
+                    resetAbsensiUI();
+                    currentAbsensiCoords = absensiPosition;
+                    showAbsensiCamera();
+                    await loadFaceApiModels();
+                    await startCamera(absensiVideo, 'user');
+                    const enrollment = await loadCurrentUserFaceEnrollment();
+                    if (enrollment && Array.isArray(enrollment.descriptor) && enrollment.descriptor.length >= 64) {
+                        startAbsensiFaceDetection(enrollment);
+                    } else {
+                        updateAbsensiStatus('Wajah belum terdaftar. Silakan daftarkan wajah terlebih dahulu.', 'warning');
+                        setTimeout(() => openFaceEnrollmentPopup(), 300);
+                    }
+                } catch (error) {
+                    updateAbsensiStatus('Gagal membuka kamera: ' + error.message, 'error');
+                    takePhotoBtn.classList.remove('hidden');
+                    absenBtn.classList.add('hidden');
+                    hideAbsensiCamera();
+                }
+            });
         };
 
         const initializeAbsensi = async () => {
             try {
+                resetAbsensiUI();
                 absenBtn.disabled = true;
+                if (userRole === 'Admin') {
+                    updateAbsensiStatus('Fitur absensi wajah tidak ditampilkan untuk admin.', 'info');
+                    return;
+                }
+                await loadFaceApiModels().catch(() => {});
                 await getKantorLocation();
                 if (kantorLocation && kantorLocation.lokasiCabang) {
                     lokasiKantorInfo.textContent = `${kantorLocation.lokasiCabang.lat}, ${kantorLocation.lokasiCabang.lon} - Radius: ${kantorLocation.lokasiCabang.radius}m`;
@@ -2817,6 +3618,13 @@ const closeAnnouncement = () => {
                 const absensiData = await getAbsensiData();
                 renderAbsensiTable(absensiData);
                 setupAbsensiListeners();
+                const enrollment = await loadCurrentUserFaceEnrollment();
+                if (!enrollment || !Array.isArray(enrollment.descriptor) || enrollment.descriptor.length < 64) {
+                    updateAbsensiStatus('Wajah belum terdaftar. Silakan daftar wajah terlebih dahulu.', 'warning');
+                    if (userRole !== 'Admin') setTimeout(() => openFaceEnrollmentPopup(), 400);
+                } else {
+                    updateAbsensiStatus('Siap presensi. Tekan Buka Kamera untuk mulai deteksi wajah.', 'info');
+                }
                 const sudahPresensi = await sudahPresensiHariIni();
                 if (sudahPresensi) updateAbsensiStatus('Anda sudah melakukan presensi hari ini. Hanya diperbolehkan sekali presensi per hari.', 'info');
             } catch (error) { console.error("Error initializing absensi:", error); updateAbsensiStatus('Gagal memuat data absensi: ' + error.message, 'error'); }
@@ -2830,7 +3638,7 @@ const closeAnnouncement = () => {
                     <button class="bottom-nav-item" data-content="home"><i class="fas fa-home"></i><span>Home</span></button>
                     <button class="bottom-nav-item" data-content="inputPenjualan" data-tab="ringkas"><i class="fas fa-cash-register"></i><span>Penjualan</span></button>
                     <button class="bottom-nav-item" data-content="inputAbsensi"><i class="fas fa-calendar-check"></i><span>Absensi</span></button>
-                    <button class="bottom-nav-item" data-content="chatHub"><i class="fas fa-comments"></i><span>Chat</span></button>
+                    <button class="bottom-nav-item" data-content="chatHub"><i class="fas fa-comments"></i><span>Chat</span><span class="nav-badge" id="chatNavBadge" aria-label="Notifikasi chat"></span></button>
                     <button class="bottom-nav-item" id="switchModeBottom"><i class="fas fa-moon"></i><span>Mode</span></button>
                 `;
             } else {
@@ -2849,11 +3657,13 @@ const closeAnnouncement = () => {
                     bottomNav.querySelectorAll('.bottom-nav-item').forEach(navItem => navItem.classList.remove('active'));
                     item.classList.add('active');
                     allContentSections.forEach(section => section.classList.add('hidden'));
+                    if (contentId !== 'inputAbsensi') resetAbsensiUI();
                     pageTitle.textContent = getPageTitle(contentId);
                     updateTabNavigation(contentId, tab);
                     const contentSection = document.getElementById(contentId);
                     if (contentSection) {
                         contentSection.classList.remove('hidden');
+                        if (contentId === 'chatHub') markChatNotificationsSeen();
                         const renderFunctions = {
                             'inputPenjualan': () => { renderRingkasTable(); renderDetailTable(); renderSupplierTable(); },
                             'laporanRingkas': updateLaporanRingkas,
@@ -2898,9 +3708,11 @@ const closeAnnouncement = () => {
 
             const homeItem = bottomNav.querySelector('[data-content="home"]');
             if (homeItem) homeItem.click();
+            updateChatNotificationBadge();
         };
 
         // Update jam
+        updateChatNotificationBadge();
         const updateDateTime = () => {
             const now = new Date();
             const optionsDate = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
@@ -2931,6 +3743,7 @@ const closeAnnouncement = () => {
                         loadSupplierRowState(currentUser.uid);
                         loadAnnouncementCache();
                         loadPublicChatCache();
+                        loadHiddenMessages();
 
                         setupRealTimeListeners();
                         setupBottomNav();
@@ -2939,6 +3752,17 @@ const closeAnnouncement = () => {
                         mainHeader.classList.remove('hidden');
                         mainContent.classList.remove('hidden');
                         bottomNav.classList.remove('hidden');
+
+                        if (userRole !== 'Admin') {
+                            const faceEnrollment = await loadCurrentUserFaceEnrollment();
+                            if (!faceEnrollment || !Array.isArray(faceEnrollment.descriptor) || faceEnrollment.descriptor.length < 64) {
+                                setTimeout(() => openFaceEnrollmentPopup(), 300);
+                            }
+                        } else {
+                            closeFaceEnrollmentPopup();
+                        }
+
+                        updateChatNotificationBadge();
                     } catch (error) {
                         console.error("Error during auth state change:", error);
                         alert("Terjadi kesalahan: " + error.message);
@@ -2973,6 +3797,31 @@ const closeAnnouncement = () => {
             });
 
             closeAnnouncementModal?.addEventListener('click', closeAnnouncement);
+            closeFaceEnrollment?.addEventListener('click', closeFaceEnrollmentPopup);
+            saveFaceEnrollmentBtn?.addEventListener('click', saveFaceEnrollment);
+            closeMessageOptions?.addEventListener('click', closeMessageOptions);
+            deleteMessageForMeBtn?.addEventListener('click', async () => {
+                if (!messageDeleteContext) return;
+                try {
+                    if (messageDeleteContext.type === 'chat') await deleteChatForMe(messageDeleteContext.id);
+                    else await deleteAnnouncementForMe(messageDeleteContext.id);
+                    closeMessageOptions();
+                    renderChatSection('chatHub');
+                } catch (error) {
+                    alert('Gagal hapus untuk saya: ' + error.message);
+                }
+            });
+            deleteMessageForAllBtn?.addEventListener('click', async () => {
+                if (!messageDeleteContext) return;
+                try {
+                    if (messageDeleteContext.type === 'chat') await deleteChatForAll(messageDeleteContext.id);
+                    else await deleteAnnouncementForAll(messageDeleteContext.id);
+                    closeMessageOptions();
+                    renderChatSection('chatHub');
+                } catch (error) {
+                    alert(error.message || 'Gagal hapus untuk semua.');
+                }
+            });
 
             setupTambahEntri();
             setupEditModeButtons();
